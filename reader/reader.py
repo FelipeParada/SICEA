@@ -100,9 +100,9 @@ class AguasAndinasReader:
                 Charge.objects.create(
                     bill=bill,
                     name=extracted_data['charge_name'],
-                    value=extracted_data['charge_amount'],
+                    value=extracted_data['cubic_meters'],
                     value_type='Water Consumption',
-                    charge=int(extracted_data['cubic_meters']),
+                    charge=int(extracted_data['charge_amount']),
                 )
 
             # Add to the list of all processed bills
