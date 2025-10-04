@@ -24,11 +24,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isValid = await authService.verifyToken();
           if (isValid) {
             setIsAuthenticated(true);
-            setUser(authService.getUser());
+            let storedUser = localStorage.getItem('user_data');
+            if (!storedUser) {
+              // Si no hay usuario en localStorage, obtenerlo del backend
+              const response = await fetch('http://127.0.0.1:8000/api/users/me/', {
+                method: 'GET',
+                headers: {
+                  'Authorization': `Token ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              });
+              if (response.ok) {
+                const user = await response.json();
+                localStorage.setItem('user_data', JSON.stringify(user));
+                setUser(user);
+              } else {
+                setUser(null);
+                setIsAuthenticated(false);
+                authService.clearAuth();
+              }
+            } else {
+              setUser(JSON.parse(storedUser));
+            }
+          } else {
+            setIsAuthenticated(false);
+            setUser(null);
+            authService.clearAuth();
           }
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
         }
       } catch (error) {
-        console.error('Error checking authentication:', error);
+        setIsAuthenticated(false);
+        setUser(null);
+        authService.clearAuth();
       } finally {
         setLoading(false);
       }
@@ -41,6 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const response = await authService.login(credentials);
     setIsAuthenticated(true);
     setUser(response.user);
+    // Guardar usuario en localStorage con la clave correcta
+    localStorage.setItem('user_data', JSON.stringify(response.user));
     return response;
   };
 
@@ -49,6 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await authService.logout();
     setIsAuthenticated(false);
     setUser(null);
+    localStorage.removeItem('user_data');
   };
 
   return (

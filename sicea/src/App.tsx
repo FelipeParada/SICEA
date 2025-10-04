@@ -2,6 +2,7 @@ import React from 'react';
 import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
 import { useAuth } from './hooks/AuthContext';
+import FileUpload from "./components/FileUpload.tsx";
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -19,7 +20,7 @@ function App() {
     );
   }
 
-  return isAuthenticated ? <Dashboard /> : <LoginPage />;
+  return isAuthenticated ? <FileUpload /> : <LoginPage />;
 }
 
 export default App;
