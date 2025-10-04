@@ -7,6 +7,29 @@ import re
 from datetime import datetime
 from reader.models import Meter, Bill, Charge
 
+class BillDetector:
+    @staticmethod
+    def detect_provider(file_path: str) -> str:
+        """
+        Detect whether the bill is from Enel (electricity) or Aguas Andinas (water).
+        Returns: "enel", "aguas", or "unknown"
+        """
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                text = ""
+                for page in pdf.pages[:2]:  # leer solo primeras páginas, más rápido
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text.lower()
+
+            if "agua" in text or "Agua" in text or "AGUA" in text:
+                return "aguas"
+            if "Electricidad" in text or "electricidad" in text or "ELECTRICIDAD" in text:
+                return "enel"
+            return "unknown"
+
+        except Exception:
+            return "unknown"
 
 class AguasAndinasReader:
     def __init__(self):
@@ -22,7 +45,7 @@ class AguasAndinasReader:
         # Extract Account Number
         account_match = re.search(r'Nro de cuenta\s*(\d+-\d+)', text)
         if account_match:
-            data_tmp['account_number'] = account_match.group(1)
+            data_tmp['client_number'] = account_match.group(1)
 
         # Extract Current Reading Date and calculate month/year
         reading_date_match = re.search(r'LECTURA ACTUAL\s*(\d{2}-[A-Z]{3}-\d{4})', text)
@@ -71,9 +94,9 @@ class AguasAndinasReader:
 
             # Retrieve or create the Meter
             meter, _ = Meter.objects.get_or_create(
-                client_number=extracted_data['account_number'],
+                client_number=extracted_data['client_number'],
                 defaults={
-                    'name': f"Meter {extracted_data['account_number']}",
+                    'name': f"Meter {extracted_data['client_number']}",
                     'meter_type': 'WATER',
                     'coverage': 'Unknown',
                 }

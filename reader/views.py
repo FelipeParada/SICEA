@@ -4,7 +4,7 @@ import tempfile
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from .models import Meter, Bill, Charge
-from .reader import EnelReader
+from .reader import EnelReader, BillDetector, AguasAndinasReader
 import uuid
 
 User = get_user_model()
@@ -26,28 +26,30 @@ class ProcessMultipleBillsView(APIView):
                 tmp_path = tmp_file.name
 
             try:
-                # Procesar PDF
-                reader = EnelReader()
+                # Detectar tipo de boleta
+                provider = BillDetector.detect_provider(tmp_path)
+
+                if provider == "enel":
+                    reader = EnelReader()
+                elif provider == "aguas":
+                    reader = AguasAndinasReader()
+                else:
+                    raise ValueError("No se pudo identificar el proveedor de la boleta")
+
+                # Procesar PDF con el reader correcto
                 bill_data = reader.process_bill(tmp_path)
 
-                # Obtener o crear el medidor
-                meter, _ = Meter.objects.get_or_create(
-                    client_number=bill_data.get('client_number'),
-                    defaults={
-                        'name': f"Medidor {bill_data.get('client_number')}",
-                        'meter_type': 'ELECTRICITY',
-                    }
-                )
+                meter = Meter.objects.filter(client_number=bill_data.get('client_number')).first()
 
                 unique_pdf_name = f"{uuid.uuid4()}.pdf"  # Nombre único para el archivo PDF
 
-                # Crear la boleta
-                bill, _ = Bill.objects.get_or_create(
+                # Obtener boleta
+                bill = Bill.objects.filter(
                     meter=meter,
                     month=bill_data.get('month'),
                     year=bill_data.get('year'),
-                    total_to_pay=bill_data.get('total_amount', 0),
-                )
+                ).first()
+
                 if not bill.pdf_filename:
                     bill.pdf_filename = unique_pdf_name
                     bill.save()
@@ -57,20 +59,12 @@ class ProcessMultipleBillsView(APIView):
                         for chunk in file.chunks():
                             destination.write(chunk)
 
-                # Crear el cargo de consumo
-                if 'consumption_kwh' in bill_data:
-                    Charge.objects.get_or_create(
-                        bill=bill,
-                        name=bill_data.get('charge_name', 'Electricidad Consumida'),
-                        value=bill_data.get('consumption_kwh', 0),
-                        value_type='Electricity Consumption',
-                        charge=bill_data.get('consumption_charge', 0),
-                    )
-
                 results.append({
                     'file': file.name,
                     'status': 'procesado',
                     'client_number': bill_data.get('client_number'),
+                    'month': bill_data.get('month'),
+                    'year': bill_data.get('year'),
                     'total_amount': bill_data.get('total_amount')
                 })
 
