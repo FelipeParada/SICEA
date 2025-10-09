@@ -116,7 +116,7 @@ class AguasAndinasReader:
                     bill=bill,
                     name=extracted_data['charge_name'],
                     value=extracted_data['cubic_meters'],
-                    value_type='Water Consumption',
+                    value_type='m3',
                     charge=int(extracted_data['charge_amount']),
                 )
 
@@ -310,7 +310,7 @@ class EnelReader:
                     bill=bill,
                     name=extracted_data['charge_name'],
                     value=extracted_data.get('consumption_kwh', 0),
-                    value_type='Electricity Consumption',
+                    value_type='kWh',
                     charge=extracted_data.get('consumption_charge', 0),
                 )
 
