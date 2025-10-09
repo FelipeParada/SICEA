@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/AuthContext';
+import { useNavigate } from 'react-router-dom'; // <-- importar
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -10,6 +11,7 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState('');
 
   const { login } = useAuth();
+  const navigate = useNavigate(); // <-- inicializar
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,6 +20,7 @@ const LoginPage: React.FC = () => {
 
     try {
       await login({ email, password });
+      navigate('/'); // <-- redirigir al home
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error en el inicio de sesión');
     } finally {
@@ -110,16 +113,6 @@ const LoginPage: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Additional Links */}
-          <div className="mt-6 text-center">
-            <a 
-              href="#" 
-              className="text-blue-300 hover:text-blue-200 text-sm transition-colors duration-200 hover:underline"
-            >
-              ¿Olvidaste tu contraseña?
-            </a>
-          </div>
         </div>
 
         {/* Footer */}

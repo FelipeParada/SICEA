@@ -1,13 +1,19 @@
-import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './components/LoginPage';
-import Dashboard from './components/Dashboard';
 import { useAuth } from './hooks/AuthContext';
-import FileUpload from "./components/FileUpload.tsx";
+import FileUploadPage from './components/FileUploadPage';
+import HomePage from './components/HomePage';
+import ExportPage from "./components/ExportPage.tsx";
+
+
+
+function PrivateRoute({ children }: { children: JSX.Element }) {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
+}
 
 function App() {
-  const { isAuthenticated, loading } = useAuth();
-
-  console.log('Authentication Status:', isAuthenticated, 'Loading:', loading);
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -20,7 +26,38 @@ function App() {
     );
   }
 
-  return isAuthenticated ? <FileUpload /> : <LoginPage />;
+  return (
+    <Router>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/"
+          element={
+            <PrivateRoute>
+              <HomePage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/subir-boletas"
+          element={
+            <PrivateRoute>
+              <FileUploadPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/exportar"
+          element={
+            <PrivateRoute>
+              <ExportPage />
+            </PrivateRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
+  );
 }
 
 export default App;

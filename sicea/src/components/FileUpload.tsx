@@ -25,7 +25,7 @@ const FileUpload = () => {
     });
 
     try {
-      const token = localStorage.getItem('auth_token'); // <-- clave correcta
+      const token = localStorage.getItem('auth_token');
       await axios.post(
         'http://localhost:8000/api/reader/process-multiple-bills/',
         formData,
@@ -76,7 +76,7 @@ const FileUpload = () => {
               disabled={uploading || files.length === 0}
               className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 disabled:from-blue-400 disabled:to-blue-500 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 transform hover:scale-[1.02] disabled:hover:scale-100 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-transparent shadow-lg hover:shadow-xl flex items-center justify-center"
             >
-              {uploading ? 'Subiendo...' : `Guardar ${files.length} archivo${files.length !== 1 ? 's' : ''}`}
+              {uploading ? 'Subiendo...' : `Guardar archivos`}
             </button>
           </form>
           {files.length > 0 && (
