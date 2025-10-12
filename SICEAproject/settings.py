@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'users',
     'django_extensions',
     'reader',
+    'writer',
 ]
 
 MIDDLEWARE = [
