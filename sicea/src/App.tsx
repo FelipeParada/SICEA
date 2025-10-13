@@ -4,6 +4,8 @@ import { useAuth } from './hooks/AuthContext';
 import FileUploadPage from './components/FileUploadPage';
 import HomePage from './components/HomePage';
 import ExportPage from "./components/ExportPage.tsx";
+import BillsPage from './components/BillsPage';
+import ChargesPage from './components/ChargesPage';
 
 
 
@@ -39,7 +41,7 @@ function App() {
           }
         />
         <Route
-          path="/subir-boletas"
+          path="/subir-facturas"
           element={
             <PrivateRoute>
               <FileUploadPage />
@@ -51,6 +53,22 @@ function App() {
           element={
             <PrivateRoute>
               <ExportPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/facturas"
+          element={
+            <PrivateRoute>
+              <BillsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/cargos"
+          element={
+            <PrivateRoute>
+              <ChargesPage />
             </PrivateRoute>
           }
         />

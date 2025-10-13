@@ -51,7 +51,7 @@ const FileUpload = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 shadow-2xl border border-white/20">
-          <h1 className="text-3xl font-bold text-white mb-6 text-center">Subir Boletas</h1>
+          <h1 className="text-3xl font-bold text-white mb-6 text-center">Subir Facturas</h1>
           {success && (
             <div className="mb-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg text-green-200 text-center text-sm">
               {success}
