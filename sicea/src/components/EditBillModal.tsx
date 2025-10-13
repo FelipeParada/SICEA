@@ -59,13 +59,13 @@ const EditBillModal: React.FC<EditBillModalProps> = ({ isOpen, bill, onSave, onC
         { withCredentials: true }
       );
 
-      console.log('Boleta actualizada:', response.data);
+      console.log('Factura actualizada:', response.data);
 
       // Llamar a la función onSave para actualizar el estado en el componente padre
       onSave(updatedBill);
     } catch (err: any) {
-      console.error('Error al actualizar la boleta:', err);
-      setError('Error al actualizar la boleta. Intenta nuevamente.');
+      console.error('Error al actualizar la factura:', err);
+      setError('Error al actualizar la factura. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -74,7 +74,7 @@ const EditBillModal: React.FC<EditBillModalProps> = ({ isOpen, bill, onSave, onC
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
       <div className="bg-slate-800/90 rounded-2xl shadow-2xl p-6 w-full max-w-md border border-white/20">
-        <h2 className="text-2xl font-bold text-white mb-4">Editar Boleta</h2>
+        <h2 className="text-2xl font-bold text-white mb-4">Editar Factura</h2>
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-200 text-center">
             {error}

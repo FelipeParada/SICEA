@@ -502,7 +502,7 @@ export default function BillsPage(): JSX.Element {
       <ConfirmModal
         isOpen={isModalOpen}
         title="Confirmar eliminación"
-        message="¿Estás seguro de que deseas eliminar esta boleta?"
+        message="¿Estás seguro de que deseas eliminar esta factura?"
         onConfirm={confirmDelete}
         onCancel={() => setIsModalOpen(false)}
       />
