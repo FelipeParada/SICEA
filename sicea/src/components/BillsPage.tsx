@@ -279,10 +279,9 @@ export default function BillsPage(): JSX.Element {
   return (
     <>
       <NavBar />
-      <div className="pt-20 min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex flex-col items-center">
-        <h1 className="text-3xl font-bold text-white mb-8">Facturas</h1>
-
-        <div className="bg-blue-800/80 rounded-2xl shadow-2xl p-8 w-full max-w-4xl">
+      <div className="pt-20 min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex flex-col items-center px-4">
+        <div className="bg-white/10 backdrop-blur-md rounded-2xl shadow-2xl p-10 w-full max-w-4xl border border-white/20">
+          <h1 className="text-3xl font-bold text-white text-center mb-8">Facturas</h1>
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Filtro por tipo de medidor */}
             <div>
@@ -391,18 +390,21 @@ export default function BillsPage(): JSX.Element {
           </div>
 
           {/* Botón de Filtrar */}
-          <div className="flex justify-end">
+          <div className="flex justify-end mb-6">
             <button
               onClick={applyFilters}
-              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-500 transition-colors flex items-center gap-2"
+              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-500 transition-colors flex items-center gap-2 font-semibold"
             >
               <Filter className="w-5 h-5" />
               Filtrar
             </button>
           </div>
 
-          {error && <p className="text-red-500 mt-4">{error}</p>} {/* Mostrar error si existe */}
-
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-200 text-center text-sm">
+              {error}
+            </div>
+          )}
           {loading && <p className="text-white">Cargando...</p>}
           {!loading && !error && (
             <div className="overflow-x-auto">
@@ -502,6 +504,9 @@ export default function BillsPage(): JSX.Element {
               </table>
             </div>
           )}
+        </div>
+        <div className="text-center mt-12">
+          <p className="text-blue-200/60 text-sm">© 2025 SICEA. Todos los derechos reservados.</p>
         </div>
       </div>
 
