@@ -232,3 +232,89 @@ class DownloadBillView(APIView):
                 {"detail": "La boleta no existe."},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+class ValidateBatchBillsView(APIView):
+    """
+    POST /api/reader/validate-batch-bills/
+    Recibe archivos PDF y retorna el estado de cada factura:
+    - correct: factura válida y no duplicada
+    - duplicated: factura duplicada dentro del lote
+    - in_db: factura ya existente en la base de datos
+    - invalid: factura con formato incorrecto o no reconocida
+    """
+    def post(self, request):
+        files = request.FILES.getlist('files')
+        results = []
+        seen_keys = set()
+        lote_keys = set()
+
+        for file in files:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                for chunk in file.chunks():
+                    tmp_file.write(chunk)
+                tmp_path = tmp_file.name
+
+            try:
+                provider = BillDetector.detect_provider(tmp_path)
+                if provider == "enel":
+                    reader = EnelReader()
+                    bill_data = reader.validate_bill(tmp_path)
+                elif provider == "aguas":
+                    reader = AguasAndinasReader()
+                    bill_data = reader.validate_bill(tmp_path)
+                else:
+                    results.append({
+                        'file': file.name,
+                        'status': 'invalid',
+                        'detail': 'Proveedor no reconocido'
+                    })
+                    continue
+
+                key = (
+                    bill_data.get('client_number'),
+                    bill_data.get('month'),
+                    bill_data.get('year'),
+                )
+
+                # Verifica duplicados en el lote
+                if key in lote_keys:
+                    results.append({
+                        'file': file.name,
+                        'status': 'duplicated',
+                        'detail': 'Duplicada en el lote'
+                    })
+                    continue
+                lote_keys.add(key)
+
+                # Verifica existencia en la base de datos
+                meter = Meter.objects.filter(client_number=bill_data.get('client_number')).first()
+                exists = Bill.objects.filter(
+                    meter=meter,
+                    month=bill_data.get('month'),
+                    year=bill_data.get('year'),
+                ).exists()
+
+                if exists:
+                    results.append({
+                        'file': file.name,
+                        'status': 'in_db',
+                        'detail': 'Ya existe en la base de datos'
+                    })
+                else:
+                    results.append({
+                        'file': file.name,
+                        'status': 'correct',
+                        'detail': 'Factura válida y no duplicada'
+                    })
+
+            except Exception as e:
+                results.append({
+                    'file': file.name,
+                    'status': 'invalid',
+                    'detail': str(e)
+                })
+            finally:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        return JsonResponse({'results': results})

@@ -178,6 +178,23 @@ class AguasAndinasReader:
         self.all_data = []
         print("All data cleared")
 
+    def validate_bill(self, file_pdf: str) -> dict:
+        """
+        Extrae la información relevante de la boleta sin crear instancias en la base de datos.
+        """
+        try:
+            with pdfplumber.open(file_pdf) as pdf:
+                complete_text = ""
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        complete_text += text + "\n"
+            extracted_data = self.extract_info_from_text(complete_text, file_pdf)
+            extracted_data['complete_text'] = complete_text
+            return extracted_data
+        except Exception as e:
+            print(f"Error validating bill {file_pdf}: {e}")
+            return {}
 
 class EnelReader:
     def __init__(self):
@@ -330,3 +347,21 @@ class EnelReader:
         """
         for pdf_file in pdf_files:
             self.process_bill(pdf_file)
+
+    def validate_bill(self, file_pdf: str) -> dict:
+        """
+        Extrae la información relevante de la boleta sin crear instancias en la base de datos.
+        """
+        try:
+            with pdfplumber.open(file_pdf) as pdf:
+                complete_text = ""
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        complete_text += text + "\n"
+            extracted_data = self.extract_info_from_text(complete_text, file_pdf)
+            extracted_data['complete_text'] = complete_text
+            return extracted_data
+        except Exception as e:
+            print(f"Error validating bill {file_pdf}: {e}")
+            return {}

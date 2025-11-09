@@ -3,6 +3,8 @@ from . import views
 
 urlpatterns = [
     path("process-multiple-bills/", views.ProcessMultipleBillsView.as_view(), name="process_multiple_bills"),
+    path("validate-batch-bills/", views.ValidateBatchBillsView.as_view(), name="validate-batch-bills"),
+    
     # Endpoints para listar y editar/eliminar facturas
     path("bills/", views.BillListView.as_view(), name="bills-list"),
     path("bills/<int:pk>/", views.BillDetailView.as_view(), name="bills-detail"),
