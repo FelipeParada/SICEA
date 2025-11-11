@@ -6,13 +6,18 @@ class Meter(models.Model):
         ('ELECTRICITY', 'Electricity'),
         ('WATER', 'Water'),
     )
-    name = models.CharField(max_length=100)
-    client_number = models.CharField(max_length=50)
     meter_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
-    coverage = models.CharField(max_length=250)
+    name = models.CharField(max_length=100, blank=True, default='')
+    client_number = models.CharField(max_length=50)
+    macrozona = models.CharField(max_length=200, blank=True, default='')
+    instalacion = models.CharField(max_length=200, blank=True, default='')
+    direccion = models.CharField(max_length=250, blank=True, default='')
+    
+    # Campo deprecado pero mantenido para compatibilidad
+    coverage = models.CharField(max_length=250, blank=True, default='')
 
     def __str__(self):
-        return f"{self.name} ({self.client_number})"
+        return f"{self.name or self.instalacion or 'Sin nombre'} ({self.client_number})"
 
 
 class Bill(models.Model):

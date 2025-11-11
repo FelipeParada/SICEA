@@ -38,4 +38,4 @@ class BillSerializer(serializers.ModelSerializer):
 class MeterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Meter
-        fields = ['id', 'name', 'client_number', 'meter_type', 'coverage']
+        fields = ['id', 'meter_type', 'name', 'client_number', 'macrozona', 'instalacion', 'direccion', 'coverage']
