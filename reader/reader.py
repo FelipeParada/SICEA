@@ -209,9 +209,9 @@ class EnelReader:
 
         # Extract Client Number - varios patrones posibles
         client_patterns = [
-            r'Número de cliente\s*(\d+(?:-\d+)?)',
-            r'(\d{6,7}-\d)\s*\d{2}/\d{2}/\d{4}',  # Ejemplo: 177949-4 10/01/2024
-            r'(\d+-\d+)\s+\d{2}/\d{2}/\d{4}'  # Ejemplo: 3042290-2 18/02/2025
+            r'Número de cliente\s*(\d+(?:-\w+)?)',
+            r'(\d{6,7}-\w)\s*\d{2}/\d{2}/\d{4}',  # Ejemplo: 177949-4 10/01/2024
+            r'(\d+-\w+)\s+\d{2}/\d{2}/\d{4}'  # Ejemplo: 3042290-2 18/02/2025
         ]
 
         for pattern in client_patterns:
