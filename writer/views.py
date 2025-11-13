@@ -114,18 +114,62 @@ class ExportExcelView(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
 
+    def _get_unique_charges(self, bills):
+        """
+        Obtiene todos los cargos únicos de las boletas que tienen valor monetario o de consumo.
+        Excluye solo cargos puramente informativos (textos, códigos, fechas sin monto asociado).
+        Retorna una lista ordenada de nombres de cargos.
+        """
+        charge_names = set()
+        
+        for bill in bills:
+            for charge in bill.charges.all():
+                # Incluir solo cargos que:
+                # 1. Tienen monto en $ (charge != 0), incluyendo negativos (descuentos), O
+                # 2. Tienen valor numérico en m3/kWh (value > 0 y value_type es m3 o kWh)
+                has_monetary_value = charge.charge != 0
+                has_quantity_value = (
+                    charge.value > 0 and 
+                    charge.value_type in ['m3', 'kWh']
+                )
+                
+                # Excluir SOLO cargos puramente informativos (sin ningún valor monetario/cantidad)
+                # que son datos de contexto, no cargos reales
+                is_informative = (
+                    charge.value_type in ['código', 'fecha', 'texto', 'número'] and
+                    charge.charge == 0
+                ) or (
+                    # Excluir tarifas unitarias (son informativas, no cargos aplicados)
+                    charge.name.startswith('Tarifa') or
+                    'Factor de cobro' in charge.name or
+                    'Grupo tarifario' in charge.name or
+                    'Último pago' in charge.name or
+                    'Diámetro arranque' in charge.name
+                )
+                
+                if (has_monetary_value or has_quantity_value) and not is_informative:
+                    charge_names.add(charge.name)
+        
+        # Ordenar para tener consistencia
+        return sorted(list(charge_names))
+
     def _create_formatted_sheet(self, workbook, sheet_name, bills, consumo_label):
         """
         Crea una hoja formateada con el estilo de la imagen de referencia.
+        Incluye desagregación dinámica de cargos.
         """
         sheet = workbook.create_sheet(title=sheet_name)
+        
+        # Obtener todos los cargos únicos que tienen m3 o monto
+        unique_charges = self._get_unique_charges(bills)
+        num_charge_columns = len(unique_charges) * 2  # Cada cargo tiene 2 columnas (m3 y Monto)
         
         # Definir estilos
         header_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")  # Gris claro
         header_font = Font(name="Arial", bold=True, size=11)
         data_font = Font(name="Arial", size=11)
         center_alignment = Alignment(horizontal="center", vertical="center")
-        bottom_alignment = Alignment(horizontal="center", vertical="bottom")
+        bottom_center_alignment = Alignment(horizontal="center", vertical="bottom")
         
         # Bordes
         thin_border = Border(
@@ -198,9 +242,29 @@ class ExportExcelView(APIView):
             bottom=Side(style='thin', color='000000')
         )
         
-        # FILA 1: Encabezados principales combinados
-        sheet.merge_cells('A1:E1')  # IDENTIFICACIÓN
-        sheet.merge_cells('F1:H1')  # CIFRAS DESTACADAS
+        # Calcular posiciones de columnas
+        # Columnas A-E: IDENTIFICACIÓN (5 columnas)
+        # Columnas F-H: CIFRAS DESTACADAS (3 columnas: Período, Consumo, Total a Pagar)
+        # Columnas I+: DESAGREGACIÓN DE CARGOS (2 columnas por cada cargo)
+        
+        last_cifras_col = 8  # Columna H (Total a Pagar)
+        first_charge_col = 9  # Columna I (primera columna de desagregación)
+        last_charge_col = first_charge_col + num_charge_columns - 1
+        
+        # FILA 1-2: Encabezados principales combinados (abarcan filas 1 y 2)
+        sheet.merge_cells('A1:E2')  # IDENTIFICACIÓN
+        sheet.merge_cells('F1:H2')  # CIFRAS DESTACADAS
+        
+        # Combinar celdas para DESAGREGACIÓN DE CARGOS si hay cargos (solo fila 1)
+        if num_charge_columns > 0:
+            from openpyxl.utils import get_column_letter
+            start_col_letter = get_column_letter(first_charge_col)
+            end_col_letter = get_column_letter(last_charge_col)
+            sheet.merge_cells(f'{start_col_letter}1:{end_col_letter}1')
+            sheet[f'{start_col_letter}1'] = 'Desagregación de Cargos'
+            sheet[f'{start_col_letter}1'].fill = header_fill
+            sheet[f'{start_col_letter}1'].font = header_font
+            sheet[f'{start_col_letter}1'].alignment = bottom_center_alignment
         
         sheet['A1'] = 'IDENTIFICACIÓN'
         sheet['F1'] = 'CIFRAS DESTACADAS'
@@ -211,12 +275,12 @@ class ExportExcelView(APIView):
         # Aplicar estilos a encabezados principales con bordes exteriores gruesos
         sheet['A1'].fill = header_fill
         sheet['A1'].font = header_font
-        sheet['A1'].alignment = bottom_alignment  # Alineado abajo
-        sheet['A1'].border = top_left_corner  # Esquina superior izquierda
+        sheet['A1'].alignment = bottom_center_alignment
+        sheet['A1'].border = top_left_corner
         
         sheet['F1'].fill = header_fill
         sheet['F1'].font = header_font
-        sheet['F1'].alignment = bottom_alignment  # Alineado abajo
+        sheet['F1'].alignment = bottom_center_alignment
         sheet['F1'].border = thin_border
         
         # Aplicar borde superior grueso a las celdas intermedias de fila 1
@@ -232,28 +296,66 @@ class ExportExcelView(APIView):
             bottom=Side(style='thin', color='000000')
         )
         
-        # Celdas F1 y G1 con borde superior grueso
+        # Celdas F1, G1 con borde superior grueso
         for col in ['F', 'G']:
             cell = sheet[f'{col}1']
             cell.border = thick_top_border
         
-        # Celda H1 - esquina superior derecha
-        sheet['H1'].border = top_right_corner
+        # Celda H1 - borde superior grueso y derecho grueso (división con desagregación)
+        sheet['H1'].border = Border(
+            left=Side(style='thin', color='000000'),
+            right=Side(style='thick', color='000000'),
+            top=Side(style='thick', color='000000'),
+            bottom=Side(style='thin', color='000000')
+        )
         
-        # FILA 2: Sub-encabezados
-        headers = [
+        # Aplicar bordes a las celdas de Desagregación de Cargos en fila 1
+        if num_charge_columns > 0:
+            from openpyxl.utils import get_column_letter
+            for col_idx in range(first_charge_col, last_charge_col):
+                col_letter = get_column_letter(col_idx)
+                sheet[f'{col_letter}1'].border = thick_top_border
+            
+            # Última columna de desagregación (esquina superior derecha)
+            last_col_letter = get_column_letter(last_charge_col)
+            sheet[f'{last_col_letter}1'].border = top_right_corner
+        else:
+            # Si no hay cargos, H1 es la esquina superior derecha
+            sheet['H1'].border = top_right_corner
+        
+        # FILA 2: Sub-encabezados (nombres de cargos)
+        # Para cada cargo, combinar 2 celdas para el nombre del cargo
+        col_idx = first_charge_col
+        for charge_name in unique_charges:
+            from openpyxl.utils import get_column_letter
+            start_col = get_column_letter(col_idx)
+            end_col = get_column_letter(col_idx + 1)
+            sheet.merge_cells(f'{start_col}2:{end_col}2')
+            
+            cell = sheet[f'{start_col}2']
+            cell.value = charge_name
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = bottom_center_alignment
+            cell.border = thin_border
+            
+            col_idx += 2
+        
+        # FILA 3: Sub-sub-encabezados
+        headers_row2 = [
             'ID Factura',
             'N° de Cliente',
             'Macrozona',
             'Instalación',
             'Dirección',
             'Período',
-            consumo_label,  # 'Consumo [m3]' o 'Consumo [kWh]'
+            consumo_label,
             'Total a Pagar [$]'
         ]
         
-        for col_num, header in enumerate(headers, start=1):
-            cell = sheet.cell(row=2, column=col_num)
+        # Aplicar encabezados de IDENTIFICACIÓN y CIFRAS DESTACADAS en fila 3
+        for col_num, header in enumerate(headers_row2, start=1):
+            cell = sheet.cell(row=3, column=col_num)
             cell.value = header
             cell.fill = header_fill
             cell.font = header_font
@@ -269,7 +371,7 @@ class ExportExcelView(APIView):
                 )
             elif col_num == 5:  # Dirección (última columna de IDENTIFICACIÓN)
                 cell.border = thick_corner_border  # Grueso abajo y derecho
-            elif col_num == 8:  # Última columna - borde derecho grueso
+            elif col_num == 8:  # Total a Pagar (última columna de CIFRAS DESTACADAS)
                 cell.border = Border(
                     left=Side(style='thin', color='000000'),
                     right=Side(style='thick', color='000000'),
@@ -279,14 +381,59 @@ class ExportExcelView(APIView):
             else:
                 cell.border = thick_bottom_border  # Solo grueso abajo
         
-        # Aplicar borde derecho grueso a las celdas de la columna E en fila 1
-        # (ya combinadas, pero necesitamos asegurar el borde vertical)
-        for row in [1, 2]:
+        # Aplicar sub-encabezados "m3" y "Monto [$]" para cada cargo en fila 3
+        col_idx = first_charge_col
+        for charge_name in unique_charges:
+            from openpyxl.utils import get_column_letter
+            
+            # Columna m3
+            m3_col = get_column_letter(col_idx)
+            cell_m3 = sheet[f'{m3_col}3']
+            cell_m3.value = 'm3'
+            cell_m3.fill = header_fill
+            cell_m3.font = header_font
+            cell_m3.alignment = center_alignment
+            cell_m3.border = thick_bottom_border
+            
+            # Columna Monto [$]
+            monto_col = get_column_letter(col_idx + 1)
+            cell_monto = sheet[f'{monto_col}3']
+            cell_monto.value = 'Monto [$]'
+            cell_monto.fill = header_fill
+            cell_monto.font = header_font
+            cell_monto.alignment = center_alignment
+            
+            # Si es la última columna, aplicar borde derecho grueso
+            is_last_charge = (col_idx + 1 == last_charge_col)
+            if is_last_charge:
+                cell_monto.border = Border(
+                    left=Side(style='thin', color='000000'),
+                    right=Side(style='thick', color='000000'),
+                    top=Side(style='thin', color='000000'),
+                    bottom=Side(style='thick', color='000000')
+                )
+            else:
+                cell_monto.border = thick_bottom_border
+            
+            col_idx += 2
+        
+        # Ajustar borde derecho grueso en columnas de división
+        # Columna E (división IDENTIFICACIÓN / CIFRAS DESTACADAS)
+        for row in [1, 2, 3]:
             sheet.cell(row=row, column=5).border = Border(
                 left=Side(style='thin', color='000000'),
                 right=Side(style='thick', color='000000'),
-                top=Side(style='thin', color='000000'),
-                bottom=Side(style='thick' if row == 2 else 'thin', color='000000')
+                top=Side(style='thick' if row == 1 else 'thin', color='000000'),
+                bottom=Side(style='thick' if row == 3 else 'thin', color='000000')
+            )
+        
+        # Columna H (división CIFRAS DESTACADAS / DESAGREGACIÓN)
+        for row in [1, 2, 3]:
+            sheet.cell(row=row, column=8).border = Border(
+                left=Side(style='thin', color='000000'),
+                right=Side(style='thick', color='000000'),
+                top=Side(style='thick' if row == 1 else 'thin', color='000000'),
+                bottom=Side(style='thick' if row == 3 else 'thin', color='000000')
             )
         
         # Ajustar ancho de columnas
@@ -299,8 +446,14 @@ class ExportExcelView(APIView):
         sheet.column_dimensions['G'].width = 15  # Consumo
         sheet.column_dimensions['H'].width = 18  # Total a Pagar
         
-        # FILA 3+: Datos de las facturas
-        row_num = 3
+        # Ajustar ancho de columnas de desagregación
+        from openpyxl.utils import get_column_letter
+        for col_idx in range(first_charge_col, last_charge_col + 1):
+            col_letter = get_column_letter(col_idx)
+            sheet.column_dimensions[col_letter].width = 12
+        
+        # FILA 4+: Datos de las facturas
+        row_num = 4
         total_rows = len(bills)
         
         for idx, bill in enumerate(bills):
@@ -310,16 +463,15 @@ class ExportExcelView(APIView):
             # Obtener el valor de consumo desde los cargos
             consumo_value = ''
             if sheet_name == 'Electricidad':
-                # Buscar el cargo "Electricidad Consumida"
                 cargo_consumo = bill.charges.filter(name__icontains='Electricidad Consumida').first()
                 if cargo_consumo:
                     consumo_value = float(cargo_consumo.value)
             else:  # Agua
-                # Buscar el cargo "CONSUMO AGUA"
                 cargo_consumo = bill.charges.filter(name__icontains='CONSUMO AGUA').first()
                 if cargo_consumo:
                     consumo_value = float(cargo_consumo.value)
             
+            # Datos de IDENTIFICACIÓN y CIFRAS DESTACADAS
             data_row = [
                 '',  # ID Factura - dejar en blanco
                 bill.meter.client_number,
@@ -327,19 +479,20 @@ class ExportExcelView(APIView):
                 bill.meter.instalacion,
                 bill.meter.direccion,
                 periodo,
-                consumo_value,  # Consumo obtenido de cargos
+                consumo_value,
                 float(bill.total_to_pay)
             ]
             
             is_last_row = (idx == total_rows - 1)
             
+            # Escribir datos de IDENTIFICACIÓN y CIFRAS DESTACADAS
             for col_num, value in enumerate(data_row, start=1):
                 cell = sheet.cell(row=row_num, column=col_num)
                 cell.value = value
                 cell.font = data_font
                 
                 # Aplicar bordes según la posición
-                if col_num == 1:  # Primera columna - borde izquierdo grueso
+                if col_num == 1:  # Primera columna
                     if is_last_row:
                         cell.border = Border(
                             left=Side(style='thick', color='000000'),
@@ -349,7 +502,7 @@ class ExportExcelView(APIView):
                         )
                     else:
                         cell.border = thick_left_border
-                elif col_num == 5:  # Dirección - borde derecho grueso (división vertical)
+                elif col_num == 5:  # Dirección - división vertical
                     if is_last_row:
                         cell.border = Border(
                             left=Side(style='thin', color='000000'),
@@ -359,7 +512,7 @@ class ExportExcelView(APIView):
                         )
                     else:
                         cell.border = thick_right_border
-                elif col_num == 8:  # Última columna - borde derecho grueso
+                elif col_num == 8:  # Total a Pagar - división vertical
                     if is_last_row:
                         cell.border = Border(
                             left=Side(style='thin', color='000000'),
@@ -368,9 +521,9 @@ class ExportExcelView(APIView):
                             bottom=Side(style='thick', color='000000')
                         )
                     else:
-                        cell.border = thick_outer_right_border
+                        cell.border = thick_right_border
                 else:
-                    if is_last_row:  # Última fila - borde inferior grueso
+                    if is_last_row:
                         cell.border = Border(
                             left=Side(style='thin', color='000000'),
                             right=Side(style='thin', color='000000'),
@@ -391,5 +544,76 @@ class ExportExcelView(APIView):
                     cell.number_format = '#,##0.00'
                 elif col_num == 8:  # Total a Pagar
                     cell.number_format = '#,##0.00'
+            
+            # Escribir datos de DESAGREGACIÓN DE CARGOS
+            col_idx = first_charge_col
+            for charge_name in unique_charges:
+                from openpyxl.utils import get_column_letter
+                
+                # Buscar el cargo correspondiente en esta boleta
+                charge = bill.charges.filter(name=charge_name).first()
+                
+                # Valor de m3/kWh
+                m3_value = ''
+                if charge and charge.value > 0 and charge.value_type in ['m3', 'kWh']:
+                    m3_value = float(charge.value)
+                
+                # Valor de Monto [$] (incluye negativos como descuentos)
+                monto_value = ''
+                if charge and charge.charge != 0:
+                    monto_value = float(charge.charge)
+                
+                # Escribir m3
+                m3_col = get_column_letter(col_idx)
+                cell_m3 = sheet[f'{m3_col}{row_num}']
+                cell_m3.value = m3_value
+                cell_m3.font = data_font
+                cell_m3.alignment = Alignment(horizontal="center", vertical="center")
+                if m3_value:
+                    cell_m3.number_format = '#,##0.00'
+                
+                if is_last_row:
+                    cell_m3.border = Border(
+                        left=Side(style='thin', color='000000'),
+                        right=Side(style='thin', color='000000'),
+                        top=Side(style='thin', color='000000'),
+                        bottom=Side(style='thick', color='000000')
+                    )
+                else:
+                    cell_m3.border = thin_border
+                
+                # Escribir Monto [$]
+                monto_col = get_column_letter(col_idx + 1)
+                cell_monto = sheet[f'{monto_col}{row_num}']
+                cell_monto.value = monto_value
+                cell_monto.font = data_font
+                cell_monto.alignment = Alignment(horizontal="center", vertical="center")
+                if monto_value:
+                    cell_monto.number_format = '#,##0.00'
+                
+                # Si es la última columna, aplicar borde derecho grueso
+                is_last_charge = (col_idx + 1 == last_charge_col)
+                if is_last_charge:
+                    if is_last_row:
+                        cell_monto.border = Border(
+                            left=Side(style='thin', color='000000'),
+                            right=Side(style='thick', color='000000'),
+                            top=Side(style='thin', color='000000'),
+                            bottom=Side(style='thick', color='000000')
+                        )
+                    else:
+                        cell_monto.border = thick_outer_right_border
+                else:
+                    if is_last_row:
+                        cell_monto.border = Border(
+                            left=Side(style='thin', color='000000'),
+                            right=Side(style='thin', color='000000'),
+                            top=Side(style='thin', color='000000'),
+                            bottom=Side(style='thick', color='000000')
+                        )
+                    else:
+                        cell_monto.border = thin_border
+                
+                col_idx += 2
             
             row_num += 1

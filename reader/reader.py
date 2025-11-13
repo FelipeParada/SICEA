@@ -36,6 +36,217 @@ class AguasAndinasReader:
         self.all_data = []
 
     @staticmethod
+    def extract_main_charges(text: str) -> list:
+        """
+        Extrae todos los cargos principales de una boleta de agua de forma dinámica.
+        Captura cualquier línea entre el inicio del cuadro y antes de "El valor neto".
+        Incluye descuentos que aparecen después de TOTAL VENTA.
+        """
+        charges = []
+        
+        # Extraer la sección de cargos (entre VENCIMIENTO y "El valor neto")
+        # Esto incluye cargos antes y después de "TOTAL VENTA" (como descuentos)
+        charge_section_match = re.search(
+            r'VENCIMIENTO.*?TOTAL A PAGAR.*?\n(.*?)(?:El valor neto|Acogido Pago|Los valores con IVA)',
+            text,
+            re.DOTALL
+        )
+        
+        if charge_section_match:
+            charge_section = charge_section_match.group(1)
+            
+            # Patrones dinámicos para capturar cargos
+            # Formato 1: NOMBRE (con paréntesis) valor1 valor2 o solo valor
+            # Formato 2: NOMBRE valor1 valor2 (con cantidad y monto)
+            # Formato 3: NOMBRE valor (solo monto)
+            
+            for line in charge_section.split('\n'):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Patrón flexible que captura nombre (incluyendo paréntesis), y uno o dos valores numéricos (positivos o negativos)
+                # Ejemplo: "IVA (19%) 23.941" o "CONSUMO AGUA 40,00 18.464" o "DESCUENTO LEY REDONDEO -7"
+                match = re.match(r'^([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\(\)%\d]+?)\s+(-?[\d.,]+)(?:\s+(-?[\d.,]+))?\s*$', line)
+                
+                if match:
+                    charge_name = match.group(1).strip()
+                    first_value = match.group(2)
+                    second_value = match.group(3)
+                    
+                    if second_value:
+                        # Tiene dos valores: cantidad y monto
+                        value = float(first_value.replace('.', '').replace(',', '.'))
+                        charge_amount = float(second_value.replace('.', '').replace(',', '.'))
+                        
+                        # Determinar tipo de valor según el nombre del cargo
+                        value_type = 'm3'  # Por defecto para agua
+                        if 'CARGO FIJO' in charge_name or 'DESPACHO' in charge_name:
+                            value_type = 'unidad'
+                        
+                        charges.append({
+                            'name': charge_name,
+                            'value': value,
+                            'value_type': value_type,
+                            'charge': int(charge_amount)
+                        })
+                    else:
+                        # Solo tiene un valor: es el monto
+                        charge_amount = float(first_value.replace('.', '').replace(',', '.'))
+                        
+                        charges.append({
+                            'name': charge_name,
+                            'value': 1,
+                            'value_type': 'unidad',
+                            'charge': int(charge_amount)
+                        })
+        
+        return charges
+
+    @staticmethod
+    def extract_unit_rates(text: str) -> list:
+        """
+        Extrae todas las tarifas unitarias del cuadro 'aguas informa' de forma dinámica.
+        Captura cualquier tarifa que aparezca en el formato: "descripción = $ valor"
+        """
+        rates = []
+        
+        # Buscar la sección de tarifas (desde "Los valores con IVA" hasta "Plantas de Tratamiento" o similar)
+        rate_section_match = re.search(
+            r'Los valores con IVA.*?son los siguientes:(.*?)(?:Plantas de Tratamiento|LECTURA ACTUAL|Corte o Reposición)',
+            text,
+            re.DOTALL
+        )
+        
+        if rate_section_match:
+            rate_section = rate_section_match.group(1)
+            
+            # Patrón para capturar tarifas en formato: "descripción = $ valor"
+            rate_pattern = r'([A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-zÁÉÍÓÚáéíóúñÑ\s\d°]+?)\s*[=:]\s*\$\s*([\d.,]+)'
+            
+            for match in re.finditer(rate_pattern, rate_section):
+                rate_name = match.group(1).strip()
+                rate_value = float(match.group(2).replace('.', '').replace(',', '.'))
+                
+                # Normalizar el nombre para que sea consistente
+                if not rate_name.startswith('Tarifa'):
+                    rate_name = f'Tarifa {rate_name}'
+                
+                rates.append({
+                    'name': rate_name,
+                    'value': rate_value,
+                    'value_type': '$/unidad',
+                    'charge': 0  # Las tarifas son informativas, no cargos
+                })
+        
+        # También capturar tarifas de Corte o Reposición que pueden estar fuera de esa sección
+        corte_patterns = [
+            (r'Corte o Reposición 1era instancia[:\s]*\$\s*([\d.,]+)', 'Tarifa Corte o Reposición 1era instancia'),
+            (r'Corte o Reposición 2da instancia[:\s]*\$\s*([\d.,]+)', 'Tarifa Corte o Reposición 2da instancia'),
+        ]
+        
+        for pattern, rate_name in corte_patterns:
+            match = re.search(pattern, text)
+            if match:
+                # Evitar duplicados
+                if not any(r['name'] == rate_name for r in rates):
+                    rate_value = float(match.group(1).replace('.', '').replace(',', '.'))
+                    rates.append({
+                        'name': rate_name,
+                        'value': rate_value,
+                        'value_type': '$/unidad',
+                        'charge': 0
+                    })
+        
+        return rates
+
+    @staticmethod
+    def extract_consumption_details(text: str) -> list:
+        """
+        Extrae el detalle de consumo de forma dinámica.
+        Captura lecturas, consumos y otros datos informativos.
+        """
+        details = []
+        
+        # Patrones comunes que pueden aparecer
+        detail_patterns = [
+            # Lecturas con fecha y valor (SIN incluir fecha en el nombre para agrupar)
+            (r'LECTURA ACTUAL\s+(\d{2}-[A-Z]{3}-\d{4})\s+([\d.,]+)\s+m3', 'Lectura actual', 'm3', 'date_value'),
+            (r'LECTURA ANTERIOR\s+(\d{2}-[A-Z]{3}-\d{4})\s+([\d.,]+)\s+m3', 'Lectura anterior', 'm3', 'date_value'),
+            
+            # Valores de consumo
+            (r'DIFERENCIA DE LECTURAS\s+([\d.,]+)\s+m3', 'Diferencia de lecturas', 'm3', 'value'),
+            (r'CONSUMO TOTAL\s+([\d.,]+)\s+m3', 'Consumo total', 'm3', 'value'),
+            (r'LÍMITE DE SOBRECONSUMO\s+([\d.,]+)\s+M3', 'Límite de sobreconsumo', 'm3', 'value'),
+            
+            # Información del medidor
+            (r'Número de Medidor\s+(\d+)', 'Número de medidor', 'número', 'value'),
+            (r'Diametro Arranque individual[-\s]+([\d]+)', 'Diámetro arranque', 'mm', 'value'),
+            
+            # Clasificaciones
+            (r'Grupo Tarifario\s+([A-Z_0-9]+)', 'Grupo tarifario', 'código', 'text'),
+            (r'Clave Facturación\s+([A-Za-z\s]+?)(?:\n|Clave)', 'Clave facturación', 'código', 'text'),
+            (r'Clave Lectura\s+([A-Z\s]+?)(?:\n|ACUSE)', 'Clave lectura', 'código', 'text'),
+            
+            # Factores y otros
+            (r'Factor de Cobro del Periodo\s+([\d.,]+)', 'Factor de cobro del periodo', 'factor', 'value'),
+            
+            # Fechas importantes
+            (r'FECHA ESTIMADA PRÓXIMA LECTURA\s+(\d{2}-[A-Z]{3}-\d{4})', 'Fecha próxima lectura', 'fecha', 'text'),
+            (r'Ultimo pago\s+(\d{2}-[A-Z]{3}-\d{4})\s+\$\s*([\d.,]+)', 'Último pago', 'fecha_monto', 'special'),
+        ]
+        
+        for pattern, detail_name, value_type, pattern_type in detail_patterns:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    if pattern_type == 'date_value':
+                        # Lecturas con fecha - OMITIR la fecha del nombre para agrupar
+                        value = float(match.group(2).replace('.', '').replace(',', '.'))
+                        # No incluir la fecha en el nombre
+                        details.append({
+                            'name': detail_name,  # Sin fecha
+                            'value': value,
+                            'value_type': value_type,
+                            'charge': 0
+                        })
+                    elif pattern_type == 'value':
+                        # Valores numéricos
+                        value_str = match.group(1).replace('.', '').replace(',', '.')
+                        value = float(value_str)
+                        details.append({
+                            'name': detail_name,
+                            'value': value,
+                            'value_type': value_type,
+                            'charge': 0
+                        })
+                    elif pattern_type == 'text':
+                        # Valores de texto
+                        text_value = match.group(1).strip()
+                        details.append({
+                            'name': f'{detail_name}: {text_value}',
+                            'value': 0,
+                            'value_type': value_type,
+                            'charge': 0
+                        })
+                    elif pattern_type == 'special':
+                        # Casos especiales como "Último pago"
+                        if 'pago' in detail_name.lower():
+                            fecha = match.group(1)
+                            monto = float(match.group(2).replace('.', '').replace(',', '.'))
+                            details.append({
+                                'name': f'{detail_name} ({fecha})',
+                                'value': monto,
+                                'value_type': '$',
+                                'charge': 0
+                            })
+                except (ValueError, IndexError) as e:
+                    # Si hay error al parsear, continuar con el siguiente
+                    continue
+        
+        return details
+
+    @staticmethod
     def extract_info_from_text(text: str, file_pdf: str) -> dict:
         """
         Extract relevant information from PDF text, focusing on 'CONSUMO DE AGUA'.
@@ -66,7 +277,7 @@ class AguasAndinasReader:
         if total_match:
             data_tmp['total_amount'] = float(total_match.group(1).replace('.', '').replace(',', '.'))
 
-        # Extract 'CONSUMO DE AGUA' charge
+        # Extract 'CONSUMO DE AGUA' charge (mantener compatibilidad)
         consumption_match = re.search(r'(CONSUMO AGUA)\s+([\d.,]+)\s+([\d.,]+)', text)
         if consumption_match:
             data_tmp['charge_name'] = consumption_match.group(1)
@@ -110,14 +321,37 @@ class AguasAndinasReader:
                 total_to_pay=extracted_data['total_amount'],
             )
 
-            # Create the Charge for 'CONSUMO AGUA'
-            if 'charge_name' in extracted_data:
+            # Extraer y guardar todos los cargos principales (cuadro superior)
+            main_charges = self.extract_main_charges(complete_text)
+            for charge_data in main_charges:
                 Charge.objects.create(
                     bill=bill,
-                    name=extracted_data['charge_name'],
-                    value=extracted_data['cubic_meters'],
-                    value_type='m3',
-                    charge=int(extracted_data['charge_amount']),
+                    name=charge_data['name'],
+                    value=charge_data['value'],
+                    value_type=charge_data['value_type'],
+                    charge=charge_data['charge'],
+                )
+
+            # Extraer y guardar las tarifas unitarias (cuadro aguas informa)
+            unit_rates = self.extract_unit_rates(complete_text)
+            for rate_data in unit_rates:
+                Charge.objects.create(
+                    bill=bill,
+                    name=rate_data['name'],
+                    value=rate_data['value'],
+                    value_type=rate_data['value_type'],
+                    charge=rate_data['charge'],
+                )
+
+            # Extraer y guardar los detalles de consumo (cuadro inferior izquierdo)
+            consumption_details = self.extract_consumption_details(complete_text)
+            for detail_data in consumption_details:
+                Charge.objects.create(
+                    bill=bill,
+                    name=detail_data['name'],
+                    value=detail_data['value'],
+                    value_type=detail_data['value_type'],
+                    charge=detail_data['charge'],
                 )
 
             # Add to the list of all processed bills
