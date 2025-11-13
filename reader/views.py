@@ -241,6 +241,7 @@ class ValidateBatchBillsView(APIView):
     - duplicated: factura duplicada dentro del lote
     - in_db: factura ya existente en la base de datos
     - invalid: factura con formato incorrecto o no reconocida
+    - not_found: medidor no encontrado
     """
     def post(self, request):
         files = request.FILES.getlist('files')
@@ -288,6 +289,15 @@ class ValidateBatchBillsView(APIView):
 
                 # Verifica existencia en la base de datos
                 meter = Meter.objects.filter(client_number=bill_data.get('client_number')).first()
+                if not meter:
+                    results.append({
+                        'file': file.name,
+                        'status': 'not_found',
+                        'detail': f'El medidor {bill_data.get("client_number")} no existe',
+                        'meter': bill_data.get("client_number")
+                    })
+                    continue
+
                 exists = Bill.objects.filter(
                     meter=meter,
                     month=bill_data.get('month'),
