@@ -174,7 +174,7 @@ const FileUpload = () => {
                   uploading ||
                   files.length === 0 ||
                   !validated ||
-                  (validationResults && validationResults.some((r: any) => r.status !== 'correct'))
+                  Boolean(validationResults && validationResults.some((r: any) => r.status !== 'correct'))
                 }
                 className={`w-1/2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-all duration-200 hover:scale-[1.02] flex items-center justify-center ${
                   !validated ||
