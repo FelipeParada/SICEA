@@ -253,6 +253,13 @@ class AguasAndinasReader:
         """
         data_tmp = {'file': file_pdf}
 
+        # Extract Invoice Number (Nº después de FACTURA/BOLETA ELECTRÓNICA)
+        invoice_match = re.search(r'(?:FACTURA|BOLETA)\s+ELECTR[ÓO]NICA\s*N[°º]\s*(\d+)', text, re.IGNORECASE)
+        if invoice_match:
+            data_tmp['invoice_number'] = invoice_match.group(1)
+        else:
+            data_tmp['invoice_number'] = ''
+
         # Extract Account Number
         account_match = re.search(r'Nro de cuenta\s*(\d+-[\dkK]+)', text)
         if account_match:
@@ -319,6 +326,7 @@ class AguasAndinasReader:
                 month=extracted_data['month'],
                 year=extracted_data['year'],
                 total_to_pay=extracted_data['total_amount'],
+                invoice_number=extracted_data.get('invoice_number', ''),
             )
 
             # Extraer y guardar todos los cargos principales (cuadro superior)
@@ -441,6 +449,13 @@ class EnelReader:
         """
         data_tmp = {'file': file_pdf}
 
+        # Extract Invoice Number - buscar número al inicio de línea seguido de "Compañía" o "Cliente"
+        invoice_match = re.search(r'^(\d{10})\s+(?:Compañía|Cliente)', text, re.MULTILINE)
+        if invoice_match:
+            data_tmp['invoice_number'] = invoice_match.group(1)
+        else:
+            data_tmp['invoice_number'] = ''
+
         # Extract Client Number - varios patrones posibles
         client_patterns = [
             r'Número de cliente\s*(\d+(?:-[\dkK]+)?)',
@@ -481,6 +496,14 @@ class EnelReader:
                 except ValueError:
                     continue
 
+        # Extract Tarifa (ej: AT43 AREA 1 S Caso 3 (a))
+        # Buscar patrón "AT" seguido de números y texto
+        tarifa_match = re.search(r'(AT\d+\s+AREA\s+\d+\s+\S+\s+Caso\s+\d+\s+\([a-z]\))', text, re.IGNORECASE)
+        if tarifa_match:
+            data_tmp['tarifa'] = tarifa_match.group(1)
+        else:
+            data_tmp['tarifa'] = ''
+
         # Extract Total to Pay - múltiples patrones
         total_patterns = [
             r'Total a pagar\s*\$?\s*([\d.,]+)',
@@ -520,6 +543,117 @@ class EnelReader:
 
         return data_tmp
 
+    @staticmethod
+    def extract_electricity_charges(text: str) -> list:
+        """
+        Extrae todos los cargos de electricidad de forma dinámica.
+        Busca cargos que aparecen entre el número de cliente y 'Total Monto Neto'.
+        """
+        charges = []
+        
+        # Buscar la sección de cargos (entre datos de medidor y totales)
+        # Típicamente después de "CLUB HIPICO" o datos de medidores y antes de "Total Monto Neto"
+        charge_section_match = re.search(
+            r'(?:CLUB HIPICO|AVD TUPPER|Dirección suministro).*?\n(.*?)(?:Total Monto Neto|\d+-[\dkK]\s+[\d,]+\s+[\d,]+\s+\d+\s+\d+-\d+-\d+)',
+            text,
+            re.DOTALL | re.IGNORECASE
+        )
+        
+        if charge_section_match:
+            charge_section = charge_section_match.group(1)
+            
+            for line in charge_section.split('\n'):
+                line = line.strip()
+                if not line or 'Total' in line or 'Monto' in line:
+                    continue
+                
+                # Patrón para capturar cargos de electricidad:
+                # Ejemplos:
+                # "Administración del servicio 669 AT43 AREA..."  -> extraer "Administración del servicio" y 669
+                # "Electricidad Consumida (119092kWh) 9.121.637"
+                # "Cargo por Servicio Público 89.320"
+                # "Dem. Horas punta (206,000kW) 1.494.224"
+                
+                # Patrón 1: Con cantidad entre paréntesis
+                match_with_unit = re.match(r'^([A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-zÁÉÍÓÚáéíóúñÑ\s\.]+?)\s+\((\d+(?:[.,]\d+)?)(k?Wh?|kW)\)\s+(-?[\d.,]+)', line)
+                
+                if match_with_unit:
+                    charge_name = match_with_unit.group(1).strip()
+                    quantity_str = match_with_unit.group(2).replace('.', '').replace(',', '.')
+                    unit = match_with_unit.group(3)
+                    value_str = match_with_unit.group(4)
+                    charge_amount = float(value_str.replace('.', '').replace(',', '.'))
+                    
+                    # Normalizar unidad
+                    if unit.upper() in ['WH', 'KWH']:
+                        value_type = 'kWh'
+                        quantity = float(quantity_str)
+                        if unit.upper() == 'WH':
+                            quantity = quantity / 1000
+                    elif unit.upper() == 'KW':
+                        value_type = 'kW'
+                        quantity = float(quantity_str)
+                    else:
+                        value_type = unit
+                        quantity = float(quantity_str)
+                    
+                    # No incluir la cantidad en el nombre para consolidar columnas
+                    charges.append({
+                        'name': charge_name,
+                        'value': quantity,
+                        'value_type': value_type,
+                        'charge': int(charge_amount)
+                    })
+                    continue
+                
+                # Patrón 2: Solo nombre y valor (puede tener texto adicional al final que ignoramos)
+                match_simple = re.match(r'^([A-Za-zÁÉÍÓÚáéíóúñÑ][A-Za-zÁÉÍÓÚáéíóúñÑ\s\.]+?)\s+(-?[\d.,]+)(?:\s+[A-Z0-9].*)?$', line)
+                
+                if match_simple:
+                    charge_name = match_simple.group(1).strip()
+                    value_str = match_simple.group(2)
+                    
+                    # Validar que el valor numérico sea razonable (más de 3 dígitos típicamente)
+                    if len(value_str.replace('.', '').replace(',', '')) >= 2:
+                        charge_amount = float(value_str.replace('.', '').replace(',', '.'))
+                        
+                        charges.append({
+                            'name': charge_name,
+                            'value': 1,
+                            'value_type': 'unidad',
+                            'charge': int(charge_amount)
+                        })
+        
+        return charges
+
+    @staticmethod
+    def extract_electricity_summary(text: str) -> list:
+        """
+        Extrae los valores de resumen: Total Monto Neto, Total I.V.A., Monto Exento, Monto Total.
+        """
+        summary = []
+        
+        # Buscar la sección de totales (después de los cargos)
+        summary_patterns = [
+            (r'Total Monto Neto\s+([\d.,]+)', 'Total Monto Neto'),
+            (r'Total I\.?\s*V\.?\s*A\.?\s*\(19%\)\s+([\d.,]+)', 'Total I.V.A. (19%)'),
+            (r'Monto Exento\s+([\d.,]+)', 'Monto Exento'),
+            (r'Monto Total\s+([\d.,]+)', 'Monto Total'),
+        ]
+        
+        for pattern, name in summary_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                value_str = match.group(1).replace('.', '').replace(',', '.')
+                summary.append({
+                    'name': name,
+                    'value': 1,
+                    'value_type': 'unidad',
+                    'charge': int(float(value_str))
+                })
+        
+        return summary
+
     def process_bill(self, file_pdf: str) -> dict:
         """
         Process a PDF bill from Enel and extract relevant information.
@@ -553,16 +687,30 @@ class EnelReader:
                 month=extracted_data.get('month'),
                 year=extracted_data.get('year'),
                 total_to_pay=extracted_data.get('total_amount', 0),
+                tarifa=extracted_data.get('tarifa', ''),
+                invoice_number=extracted_data.get('invoice_number', ''),
             )
 
-            # Create the Charge for 'Electricidad Consumida'
-            if 'charge_name' in extracted_data:
+            # Extraer y guardar todos los cargos de electricidad
+            electricity_charges = self.extract_electricity_charges(complete_text)
+            for charge_data in electricity_charges:
                 Charge.objects.create(
                     bill=bill,
-                    name=extracted_data['charge_name'],
-                    value=extracted_data.get('consumption_kwh', 0),
-                    value_type='kWh',
-                    charge=extracted_data.get('consumption_charge', 0),
+                    name=charge_data['name'],
+                    value=charge_data['value'],
+                    value_type=charge_data['value_type'],
+                    charge=charge_data['charge'],
+                )
+
+            # Extraer y guardar los totales (Monto Neto, IVA, etc.)
+            summary_charges = self.extract_electricity_summary(complete_text)
+            for charge_data in summary_charges:
+                Charge.objects.create(
+                    bill=bill,
+                    name=charge_data['name'],
+                    value=charge_data['value'],
+                    value_type=charge_data['value_type'],
+                    charge=charge_data['charge'],
                 )
 
             # Add to the list of all processed bills

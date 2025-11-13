@@ -26,6 +26,8 @@ class Bill(models.Model):
     year = models.IntegerField()
     total_to_pay = models.DecimalField(max_digits=10, decimal_places=2)
     pdf_filename = models.CharField(max_length=255, null=True, blank=True, default=None)
+    tarifa = models.CharField(max_length=100, blank=True, default='')  # Para facturas de electricidad
+    invoice_number = models.CharField(max_length=50, blank=True, default='')  # Número de factura del PDF
 
     class Meta:
         unique_together = (('meter', 'month', 'year'),)
