@@ -39,16 +39,34 @@ class AuthService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error en el inicio de sesión');
+        const errorData = await response.json().catch(() => null);
+        console.error('Login failed:', errorData);
+
+        // Extraer mensaje útil de varios formatos comunes de error del backend
+        let message = 'Error en el inicio de sesión';
+        if (errorData) {
+          if (errorData.message) {
+            message = errorData.message;
+          } else if (errorData.detail) {
+            message = Array.isArray(errorData.detail) ? errorData.detail.join(' ') : String(errorData.detail);
+          } else if (errorData.non_field_errors) {
+            message = Array.isArray(errorData.non_field_errors) ? errorData.non_field_errors.join(' ') : String(errorData.non_field_errors);
+          } else {
+            // Buscar primer error de campo si existe
+            const firstArray = Object.values(errorData).find(v => Array.isArray(v) && v.length > 0) as any[] | undefined;
+            if (firstArray) message = firstArray.join(' ');
+          }
+        }
+
+        throw new Error(message);
       }
 
       const data: AuthResponse = await response.json();
-      
+
       // Store token and user data
       this.setToken(data.token);
       this.setUser(data.user);
-      
+
       return data;
     } catch (error) {
       if (error instanceof Error) {
