@@ -24,13 +24,13 @@ const HomePage: React.FC = () => {
 
           {/* Grid de tarjetas adaptativo */}
           <div className="flex flex-col gap-6 max-w-5xl mx-auto">
-            {/* Primera fila - 3 columnas */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Primera fila - responsive grid: auto-fit centers items and fits as many columns as possible */}
+            <div className="grid gap-6 grid-cols-[repeat(auto-fit,minmax(300px,1fr))] max-w-[1100px] mx-auto justify-items-center">
               {/* Subir Facturas - Solo administradores */}
               {user?.is_staff && (
                 <div 
                   onClick={() => navigate('/subir-facturas')}
-                  className="bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
+                  className="max-w-[360px] w-full bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
                 >
                   <div className="bg-blue-500/20 p-4 rounded-full mb-4 group-hover:bg-blue-500/40 transition-colors duration-300">
                     <UploadCloud className="w-10 h-10 text-blue-100" />
@@ -45,7 +45,7 @@ const HomePage: React.FC = () => {
               {/* Ver y Modificar Facturas - Disponible para todos */}
               <div 
                 onClick={() => navigate('/facturas')}
-                className="bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
+                className="max-w-[360px] w-full bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
               >
                 <div className="bg-blue-500/20 p-4 rounded-full mb-4 group-hover:bg-blue-500/40 transition-colors duration-300">
                   <FileText className="w-10 h-10 text-blue-100" />
@@ -59,7 +59,7 @@ const HomePage: React.FC = () => {
               {/* Exportar Información - Disponible para todos */}
               <div 
                 onClick={() => navigate('/exportar')}
-                className="bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
+                className="max-w-[360px] w-full bg-gradient-to-br from-blue-600/30 to-blue-800/50 backdrop-blur-sm rounded-xl shadow-xl p-6 flex flex-col items-center border border-blue-400/20 hover:border-blue-400/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
               >
                 <div className="bg-blue-500/20 p-4 rounded-full mb-4 group-hover:bg-blue-500/40 transition-colors duration-300">
                   <Download className="w-10 h-10 text-blue-100" />
