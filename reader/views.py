@@ -99,6 +99,14 @@ class BillListView(generics.ListAPIView):
     """
     serializer_class = BillSerializer
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'results': serializer.data,
+            'count': queryset.count()
+        })
+
     def get_queryset(self):
         qs = Bill.objects.select_related("meter").prefetch_related("charges").all()
         client_number = self.request.query_params.get("client_number")
@@ -286,12 +294,27 @@ class ValidateBatchBillsView(APIView):
                     bill_data.get('year'),
                 )
 
+                # Debug: imprimir información de extracción
+                print(f"Archivo: {file.name}")
+                print(f"  Cliente: {bill_data.get('client_number')}")
+                print(f"  Mes: {bill_data.get('month')}, Año: {bill_data.get('year')}")
+                print(f"  Key: {key}")
+
+                # Verificar si se pudo extraer la fecha
+                if bill_data.get('month') is None or bill_data.get('year') is None:
+                    results.append({
+                        'file': file.name,
+                        'status': 'invalid',
+                        'detail': 'No se pudo extraer el mes/año del PDF. Verifique que contenga la fecha de lectura o período de facturación.'
+                    })
+                    continue
+
                 # Verifica duplicados en el lote
                 if key in lote_keys:
                     results.append({
                         'file': file.name,
                         'status': 'duplicated',
-                        'detail': 'Duplicada en el lote.'
+                        'detail': f'Duplicada en el lote (mes={bill_data.get("month")}, año={bill_data.get("year")}).'
                     })
                     continue
                 lote_keys.add(key)

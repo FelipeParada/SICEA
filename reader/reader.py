@@ -266,16 +266,92 @@ class AguasAndinasReader:
             data_tmp['client_number'] = account_match.group(1)
 
         # Extract Current Reading Date and calculate month/year
-        reading_date_match = re.search(r'LECTURA ACTUAL\s*(\d{2}-[A-Z]{3}-\d{4})', text)
-        if reading_date_match:
-            reading_date_str = reading_date_match.group(1)
-            try:
-                reading_date = datetime.strptime(reading_date_str, '%d-%b-%Y')
-                previous_month = reading_date.month - 1 if reading_date.month > 1 else 12
-                year = reading_date.year if previous_month != 12 else reading_date.year - 1
+        # Intentar múltiples patrones para encontrar la fecha
+        reading_date_patterns = [
+            r'LECTURA ACTUAL\s*(\d{2}-[A-Z]{3}-\d{4})',  # 01-AGO-2024
+            r'LECTURA ACTUAL\s*(\d{2}/\d{2}/\d{4})',     # 01/08/2024
+            r'LECTURA ACTUAL\s+(\d{2}-[A-Za-z]{3}-\d{4})',  # Variante con mayúsculas/minúsculas
+            r'Periodo de Lectura.*?(\d{2}-[A-Z]{3}-\d{4})',  # Buscar en período
+            r'LECTURA ANTERIOR\s*\d{2}-[A-Z]{3}-\d{4}\s*[\d.,]+\s*m3.*?LECTURA ACTUAL\s*(\d{2}-[A-Z]{3}-\d{4})',
+            r'FECHA ESTIMADA PRÓXIMA LECTURA\s+(\d{2}-[A-Z]{3}-\d{4})',  # Próxima lectura (restar 2 meses)
+            r'FECHA EMISIÓN:\s*(\d{2}-[A-Z]{3}-\d{4})',  # Fecha de emisión
+            r'VENCIMIENTO\s+(\d{2}-[A-Z]{3}-\d{4})',  # Fecha de vencimiento (restar 1 mes)
+        ]
+        
+        reading_date = None
+        is_next_reading = False  # Flag para saber si es fecha de próxima lectura
+        
+        for pattern in reading_date_patterns:
+            reading_date_match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if reading_date_match:
+                reading_date_str = reading_date_match.group(1).upper()  # Normalizar a mayúsculas
+                
+                # Detectar si necesita restar 2 meses (próxima lectura o vencimiento)
+                if 'PRÓXIMA LECTURA' in pattern or 'VENCIMIENTO' in pattern:
+                    is_next_reading = True
+                
+                # Primero intentar convertir meses en español a inglés
+                month_map_es = {
+                    'ENE': 'JAN', 'FEB': 'FEB', 'MAR': 'MAR', 'ABR': 'APR',
+                    'MAY': 'MAY', 'JUN': 'JUN', 'JUL': 'JUL', 'AGO': 'AUG',
+                    'SEP': 'SEP', 'OCT': 'OCT', 'NOV': 'NOV', 'DIC': 'DEC'
+                }
+                reading_date_str_converted = reading_date_str
+                for es, en in month_map_es.items():
+                    if es in reading_date_str:
+                        reading_date_str_converted = reading_date_str.replace(es, en)
+                        break
+                
+                # Intentar parsear con formato dd-MMM-yyyy (ahora con meses convertidos a inglés)
+                try:
+                    reading_date = datetime.strptime(reading_date_str_converted, '%d-%b-%Y')
+                    break
+                except ValueError:
+                    pass
+                
+                # Intentar parsear con formato dd/mm/yyyy
+                try:
+                    reading_date = datetime.strptime(reading_date_str_converted, '%d/%m/%Y')
+                    break
+                except ValueError:
+                    pass
+        
+        if reading_date:
+            # Si es fecha de próxima lectura, restar 2 meses; si es lectura actual, restar 1 mes
+            months_to_subtract = 2 if is_next_reading else 1
+            
+            # Calcular el mes correspondiente a la factura
+            target_month = reading_date.month - months_to_subtract
+            target_year = reading_date.year
+            
+            # Ajustar si el mes es negativo o cero
+            while target_month <= 0:
+                target_month += 12
+                target_year -= 1
+            
+            data_tmp['month'] = target_month
+            data_tmp['year'] = target_year
+        else:
+            # Si no se encuentra la fecha de lectura, buscar mes en texto
+            # y también restar un mes (mismo comportamiento que con fecha de lectura)
+            month_year_match = re.search(r'(Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)\s+(\d{4})', text, re.IGNORECASE)
+            if month_year_match:
+                month_names_es = {
+                    'enero': 1, 'febrero': 2, 'marzo': 3, 'abril': 4,
+                    'mayo': 5, 'junio': 6, 'julio': 7, 'agosto': 8,
+                    'septiembre': 9, 'octubre': 10, 'noviembre': 11, 'diciembre': 12
+                }
+                month_name = month_year_match.group(1).lower()
+                found_year = int(month_year_match.group(2))
+                found_month = month_names_es.get(month_name)
+                
+                # Restar un mes (mismo comportamiento que con fecha de lectura)
+                previous_month = found_month - 1 if found_month > 1 else 12
+                year = found_year if previous_month != 12 else found_year - 1
+                
                 data_tmp['month'] = previous_month
                 data_tmp['year'] = year
-            except ValueError:
+            else:
                 data_tmp['month'] = None
                 data_tmp['year'] = None
 
@@ -309,6 +385,16 @@ class AguasAndinasReader:
 
             # Extract specific information
             extracted_data = self.extract_info_from_text(complete_text, file_pdf)
+
+            # Validar campos requeridos
+            if not extracted_data.get('client_number'):
+                raise ValueError("No se pudo extraer el número de cliente del PDF")
+            if extracted_data.get('month') is None:
+                raise ValueError("No se pudo extraer el mes del PDF. Verifique que el PDF contenga la fecha de lectura o el período de facturación.")
+            if extracted_data.get('year') is None:
+                raise ValueError("No se pudo extraer el año del PDF")
+            if extracted_data.get('total_amount') is None:
+                raise ValueError("No se pudo extraer el monto total del PDF")
 
             # Retrieve or create the Meter
             meter, _ = Meter.objects.get_or_create(
@@ -670,6 +756,16 @@ class EnelReader:
 
             # Extract specific information
             extracted_data = self.extract_info_from_text(complete_text, file_pdf)
+
+            # Validar campos requeridos
+            if not extracted_data.get('client_number'):
+                raise ValueError("No se pudo extraer el número de cliente del PDF")
+            if extracted_data.get('month') is None:
+                raise ValueError("No se pudo extraer el mes del PDF. Verifique que el PDF contenga el período de lectura.")
+            if extracted_data.get('year') is None:
+                raise ValueError("No se pudo extraer el año del PDF")
+            if extracted_data.get('total_amount') is None:
+                raise ValueError("No se pudo extraer el monto total del PDF")
 
             # Retrieve or create the Meter
             meter, _ = Meter.objects.get_or_create(

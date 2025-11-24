@@ -489,6 +489,9 @@ class ExportExcelView(APIView):
         total_rows = len(bills)
         
         for idx, bill in enumerate(bills):
+            # Determinar si es la última fila
+            is_last_row = (idx == total_rows - 1)
+            
             # Formatear período como "MM/YYYY"
             periodo = f"{bill.month:02d}/{bill.year}"
             
@@ -521,9 +524,7 @@ class ExportExcelView(APIView):
                 consumo_value,
                 float(bill.total_to_pay)
             ])
-            
-            is_last_row = (idx == total_rows - 1)
-            
+
             # Escribir datos de IDENTIFICACIÓN y CIFRAS DESTACADAS
             for col_num, value in enumerate(data_row, start=1):
                 cell = sheet.cell(row=row_num, column=col_num)
