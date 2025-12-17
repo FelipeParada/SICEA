@@ -1,0 +1,73 @@
+services:
+  # Base de datos PostgreSQL
+  - type: pserv
+    name: sicea-db
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./backend/db/Dockerfile
+    envVars:
+      - key: POSTGRES_DB
+        value: siceadb
+      - key: POSTGRES_USER
+        value: admin
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+    disk:
+      name: sicea-postgres-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 1
+
+  # Backend Django
+  - type: web
+    name: sicea-backend
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn SICEAproject.wsgi:application --bind 0.0.0.0:$PORT"
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: False
+      - key: DB_HOST
+        fromService:
+          type: pserv
+          name: sicea-db
+          property: host
+      - key: DB_NAME
+        value: siceadb
+      - key: DB_USER
+        value: admin
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: sicea-db
+          envVarKey: POSTGRES_PASSWORD
+      - key: DB_PORT
+        fromService:
+          type: pserv
+          name: sicea-db
+          property: port
+      - key: ALLOWED_HOSTS
+        value: "*"
+
+  # Frontend React
+  - type: web
+    name: sicea-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: "cd frontend/sicea && npm install && npm run build"
+    staticPublishPath: frontend/sicea/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 18.17.0
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
