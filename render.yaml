@@ -46,7 +46,6 @@ services:
   - type: web
     name: sicea-frontend
     runtime: static
-    plan: free
     buildCommand: "cd frontend/sicea && npm install && npm run build"
     staticPublishPath: frontend/sicea/dist
     routes:
