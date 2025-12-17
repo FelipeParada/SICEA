@@ -2,21 +2,9 @@ services:
   # Base de datos PostgreSQL
   - type: pserv
     name: sicea-db
-    env: docker
     plan: free
-    region: oregon
-    dockerfilePath: ./backend/db/Dockerfile
-    envVars:
-      - key: POSTGRES_DB
-        value: siceadb
-      - key: POSTGRES_USER
-        value: admin
-      - key: POSTGRES_PASSWORD
-        generateValue: true
-    disk:
-      name: sicea-postgres-data
-      mountPath: /var/lib/postgresql/data
-      sizeGB: 1
+    databaseName: siceadb
+    user: admin
 
   # Backend Django
   - type: web
@@ -60,7 +48,6 @@ services:
   - type: web
     name: sicea-frontend
     env: static
-    region: oregon
     plan: free
     buildCommand: "cd frontend/sicea && npm install && npm run build"
     staticPublishPath: frontend/sicea/dist
