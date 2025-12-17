@@ -13,9 +13,14 @@ class Command(BaseCommand):
         email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@sicea.com')
         password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin123')
         
-        if User.objects.filter(is_superuser=True).exists():
-            self.stdout.write(self.style.SUCCESS('Ya existe al menos un superusuario'))
+        if User.objects.filter(email=email).exists():
+            self.stdout.write(self.style.WARNING(f'El usuario {email} ya existe'))
             return
         
-        User.objects.create_superuser(email=email, password=password)
+        user = User.objects.create_superuser(email=email, password=password)
+        user.is_staff = True
+        user.is_superuser = True
+        user.is_active = True
+        user.save()
+        
         self.stdout.write(self.style.SUCCESS(f'Superusuario creado: {email}'))
