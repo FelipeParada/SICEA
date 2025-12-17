@@ -3,8 +3,6 @@ services:
   - type: pserv
     name: sicea-db
     plan: free
-    databaseName: siceadb
-    user: admin
 
   # Backend Django
   - type: web
