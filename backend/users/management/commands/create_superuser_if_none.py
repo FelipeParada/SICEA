@@ -6,12 +6,18 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = 'Crea un superusuario si no existe ninguno'
+    help = 'Crea un superusuario si no existe ninguno (requiere variables de entorno)'
 
     def handle(self, *args, **options):
-        # Obtener credenciales de variables de entorno
-        email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@sicea.com')
-        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin123')
+        # Obtener credenciales SOLO de variables de entorno
+        email = os.environ.get('DJANGO_SUPERUSER_EMAIL')
+        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
+        
+        if not email or not password:
+            self.stdout.write(self.style.WARNING(
+                'No se creó superusuario: falta DJANGO_SUPERUSER_EMAIL o DJANGO_SUPERUSER_PASSWORD'
+            ))
+            return
         
         if User.objects.filter(email=email).exists():
             self.stdout.write(self.style.WARNING(f'El usuario {email} ya existe'))
